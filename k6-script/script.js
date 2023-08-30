@@ -64,12 +64,17 @@ export default function () {
     jar.set(`${host}`, 'metabase.SESSION', token)
     sleep(1);
 
+    http.get(`${host}/api/user/current`)
+    http.get(`${host}/api/session/properties`)
+
     // Simulate GUI queries
     let first_card = http.post(card, JSON.stringify(orders_and_people_payload), params)
     checker(first_card)
     logger(first_card)
     sleep(1);
 
+    http.get(`${host}/api/user/current`)
+    http.get(`${host}/api/session/properties`)
     let second_card = http.post(card, JSON.stringify(sum_of_orders_scalar), params)
     checker(second_card)
     logger(second_card)
@@ -78,6 +83,8 @@ export default function () {
     checker(delete_second_card)
     sleep(1);
 
+    http.get(`${host}/api/user/current`)
+    http.get(`${host}/api/session/properties`)
     let third_card = http.post(card, JSON.stringify(orders_pivot), params)
     checker(third_card)
     logger(third_card)
@@ -86,6 +93,8 @@ export default function () {
     checker(delete_third_card)
     sleep(1);
 
+    http.get(`${host}/api/user/current`)
+    http.get(`${host}/api/session/properties`)
     let fourth_card = http.post(card, JSON.stringify(average_quantity_per_source_bar), params)
     checker(fourth_card)
     logger(fourth_card)
@@ -94,6 +103,8 @@ export default function () {
     checker(delete_fourth_card)
     sleep(1);
 
+    http.get(`${host}/api/user/current`)
+    http.get(`${host}/api/session/properties`)
     let fifth_card = http.post(card, JSON.stringify(sum_tax_per_source_pie), params)
     checker(fifth_card)
     logger(fifth_card)
@@ -102,6 +113,8 @@ export default function () {
     checker(delete_fifth_card)
     sleep(1);
     
+    http.get(`${host}/api/user/current`)
+    http.get(`${host}/api/session/properties`)
     // Simulate autocomplete
     let autoc_1 = http.get(autocomplete + 'p')
     checker(autoc_1)
@@ -142,6 +155,8 @@ export default function () {
     tables = tables.json().map(table => table.id)
 
     tables.map(table => {
+        http.get(`${host}/api/user/current`)
+        http.get(`${host}/api/session/properties`)
         let xRayCall = http.get(`${automagic_url}/${table}?`)
         checker(xRayCall)
         console.log(`X-Ray responded ${xRayCall.status}`)

@@ -1,46 +1,42 @@
 services:
   metabase-load:
-    image: metabase/metabase-enterprise:v1.45.4
+    image: metabase/metabase-enterprise:v1.47.0
     container_name: metabase-load
     hostname: metabase
     volumes: 
       - /dev/urandom:/dev/random:ro
-    ports:
-      - 3001:3000
     environment: 
       MB_DB_TYPE: postgres
-      MB_DB_CONNECTION_URI: "postgres://postgres-app-db:5432/metabase?user=metabase&password=mysecretpassword&sslmode=prefer"
+      MB_DB_CONNECTION_URI: "postgres://postgres-app-db-load:5432/metabase?user=metabase&password=mysecretpassword&sslmode=prefer"
       MB_SITE_URL: http://localhost:3001/
-      MB_APPLICATION_DB_MAX_CONNECTION_POOL_SIZE: 500
+      MB_APPLICATION_DB_MAX_CONNECTION_POOL_SIZE: 500 # This number is super high in order to make the App DB not throttle Metabase
       MB_SEND_EMAIL_ON_FIRST_LOGIN_FROM_NEW_DEVICE: FALSE
-      JAVA_TOOL_OPTIONS: -Xmx1488m -Xms500m
+      JAVA_TOOL_OPTIONS: -Xmx3584m -Xms2048m
       MB_DISABLE_SESSION_THROTTLE: true
     deploy:
       resources:
         limits:
-          cpus: '2'
-          memory: 2048M
+          cpus: '4'
+          memory: 4096M
         reservations:
           cpus: '2'
-          memory: 1536M
+          memory: 2048M
     networks: 
       - metanet1-load
     depends_on: 
-      postgres-app-db:
+      postgres-app-db-load:
         condition: service_healthy
-      postgres-data1:
+      postgres-data1-load:
         condition: service_healthy
     healthcheck:
       test: curl --fail -X GET -I http://localhost:3000/api/health || exit 1
       interval: 15s
       timeout: 5s
       retries: 10
-  postgres-app-db:
+  postgres-app-db-load:
     image: postgres:15.2-alpine
-    container_name: postgres-app-db
-    hostname: postgres-app-db
-    ports:
-      - 5432:5432
+    container_name: postgres-app-db-load
+    hostname: postgres-app-db-load
     environment:
       - "POSTGRES_USER=metabase"
       - "POSTGRES_DB=metabase"
@@ -51,10 +47,10 @@ services:
       resources:
         limits:
           cpus: '2'
-          memory: 2048M
+          memory: 4096M
         reservations:
-          cpus: '2'
-          memory: 1536M
+          cpus: '1'
+          memory: 2048M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U metabase -d metabase"]
       interval: 10s
@@ -84,14 +80,12 @@ services:
       host: http://metabase
       port: 3000
       dbs: 1
-  postgres-data1:
+  postgres-data1-load:
     image:  metabase/qa-databases:postgres-sample-15
-    container_name: postgres-data1
-    hostname: postgres-data1
+    container_name: postgres-data1-load
+    hostname: postgres-data1-load
     networks: 
       - metanet1-load
-    ports:
-      - 5433:5432
     deploy:
       resources:
         limits:
@@ -106,7 +100,7 @@ services:
       timeout: 5s
       retries: 5
     command: -c 'max_connections=10000'
-  k6-load-test:
+  k6-load:
     image: grafana/k6:0.46.0
     volumes:
       - $PWD/k6-script/script.js:/home/k6/script.js

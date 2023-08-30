@@ -1,7 +1,9 @@
 Contents of this docker-compose
 ===============================
 
-Load testing of Metabase. Components
+Load testing of Metabase. 
+
+## Components
 
 - Metabase is exposed through port 3001
 - App DB (PosgreSQL() is exposed through port 5432
@@ -9,8 +11,9 @@ Load testing of Metabase. Components
 - A python container that initializes Metabase by adding a@b.com / metabot1 as the user/pass, adds the data db and deletes the H2 sample DB
 - K6 running on a container that will start when the previous container finishes
 
-Some performance considerations:
-1) Metabase App is very resource constrained on CPU, to make sure that we can see how many concurrent users can sustain on the load testing
+## Performance considerations:
+
+1) Metabase App is resource constrained on CPU in order to see how many concurrent users can sustain on the load testing
 2) App DB has more than enough resources to sustain the load, also Metabase has MB_DISABLE_SESSION_THROTTLE and MB_APPLICATION_DB_MAX_CONNECTION_POOL_SIZE defaults changed
 
 K6 test:
@@ -20,3 +23,7 @@ K6 test:
 4) sleep's are in the code to try to separate the calls and make the load tests as "natural" as possible, but this is just a dreamer's dream
 
 Mac users: you need to follow the same pattern as in https://github.com/paoliniluis/postgres-metabase-stack-m1, and bundle Metabase inside a aarch64 image
+
+## How to test
+
+Just change the Metabase container version and resources assigned to the Metabase container to see if it sustains the load
