@@ -1,7 +1,5 @@
-Contents of this docker-compose
+Metabase performance testing w/K6
 ===============================
-
-Load testing of Metabase. 
 
 ## Components
 
