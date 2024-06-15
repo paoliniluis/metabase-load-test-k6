@@ -1,0 +1,11 @@
+{
+  "name": "api_bun",
+  "module": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "bun index.js"
+  },
+  "dependencies": {
+    "postgres": "^3.4.4"
+  }
+}

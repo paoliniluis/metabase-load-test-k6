@@ -1,22 +1,55 @@
 services:
+  api_bun:
+    build: api_bun/.
+    volumes:
+      - $PWD/api_bun/:/usr/src/app
+    container_name: api_bun
+    hostname: api_bun
+    restart: always
+    networks: 
+      - metanet1-load
+    environment:
+      BUN_PORT: 3000
+      POSTGRES_CONN_STRING: postgresql://metabase:mysecretpassword@postgres-app-db-load:5432/metabase
+      CREATE_METRICS_TABLE: true
+      VERSION: 1.50.0-RC2
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 128M
+        reservations:
+          cpus: '1'
+          memory: 64M
+    depends_on:
+      postgres-app-db-load:
+        condition: service_healthy
   metabase-load:
-    image: metabase/metabase-enterprise:v1.47.0
+    image: metabase/metabase-enterprise:v1.50.0-RC2
     container_name: metabase-load
     hostname: metabase
     volumes: 
       - /dev/urandom:/dev/random:ro
+      - $PWD/logging_config:/metabase.db
+    ports:
+      - 3000:3000
     environment: 
       MB_DB_TYPE: postgres
-      MB_DB_CONNECTION_URI: "postgres://postgres-app-db-load:5432/metabase?user=metabase&password=mysecretpassword&sslmode=prefer"
+      MB_DB_HOST: postgres-app-db-load
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: mysecretpassword
+      # MB_DB_CONNECTION_URI: "postgres://postgres-app-db-load:5432/metabase?user=metabase&password=mysecretpassword"
       MB_SITE_URL: http://localhost:3001/
       MB_APPLICATION_DB_MAX_CONNECTION_POOL_SIZE: 500 # This number is super high in order to make the App DB not throttle Metabase
       MB_SEND_EMAIL_ON_FIRST_LOGIN_FROM_NEW_DEVICE: FALSE
-      JAVA_TOOL_OPTIONS: -Xmx3584m -Xms2048m
       MB_DISABLE_SESSION_THROTTLE: true
+      JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true -Xms1500m -Xmx3500m -Dlog4j.configurationFile=file:/metabase.db/log4j2.xml
     deploy:
       resources:
         limits:
-          cpus: '4'
+          cpus: '2'
           memory: 4096M
         reservations:
           cpus: '2'
@@ -34,14 +67,18 @@ services:
       timeout: 5s
       retries: 10
   postgres-app-db-load:
-    image: postgres:15.2-alpine
+    image: postgres:16.2-alpine
     container_name: postgres-app-db-load
     hostname: postgres-app-db-load
     environment:
       - "POSTGRES_USER=metabase"
       - "POSTGRES_DB=metabase"
       - "POSTGRES_PASSWORD=mysecretpassword"
-    networks: 
+    ports:
+      - 5432:5432
+    volumes:
+      - $PWD/postgres_origin:/var/lib/postgresql/data
+    networks:
       - metanet1-load
     deploy:
       resources:
@@ -101,7 +138,7 @@ services:
       retries: 5
     command: -c 'max_connections=10000'
   k6-load:
-    image: grafana/k6:0.46.0
+    image: grafana/k6:0.51.0
     volumes:
       - $PWD/k6-script/script.js:/home/k6/script.js
     networks:
