@@ -1,0 +1,10 @@
+server:
+  http_listen_port: 4040
+
+self_profiling:
+  disable_push: true
+
+limits:
+  ingestion_rate_mb: 50
+  ingestion_burst_size_mb: 50
+  max_profile_size_bytes: 0

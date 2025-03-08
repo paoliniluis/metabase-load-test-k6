@@ -2,17 +2,18 @@ services:
   api_bun:
     build: api_bun/.
     volumes:
-      - $PWD/api_bun/:/usr/src/app
+      - $PWD/api_bun/index.js:/usr/src/app/index.js
     container_name: api_bun
     hostname: api_bun
     restart: always
     networks: 
-      - metanet1-load
+      - metanet-load-testing
     environment:
       BUN_PORT: 3000
-      POSTGRES_CONN_STRING: postgresql://metabase:mysecretpassword@postgres-app-db-load:5432/metabase
+      POSTGRES_CONN_STRING: postgresql://metabase:mysecretpassword@app-db-load:5432/metabase
+      LOKI_HOST: http://loki:3100/loki/api/v1/push
       CREATE_METRICS_TABLE: true
-      VERSION: 1.50.0-RC2
+      VERSION: 1.53.5
     deploy:
       resources:
         limits:
@@ -22,20 +23,26 @@ services:
           cpus: '1'
           memory: 64M
     depends_on:
-      postgres-app-db-load:
+      app-db-load:
         condition: service_healthy
-  metabase-load:
-    image: metabase/metabase-enterprise:v1.50.0-RC2
-    container_name: metabase-load
-    hostname: metabase
+  metabase-load-test:
+    image: metabase/metabase-enterprise:v1.53.5
+    container_name: metabase-load-test
+    hostname: metabase-load-test
     volumes: 
       - /dev/urandom:/dev/random:ro
       - $PWD/logging_config:/metabase.db
+      # - $PWD/pyroscope/pyroscope.jar:/app/pyroscope/pyroscope.jar
+      - $PWD/otel/opentelemetry-javaagent.jar:/app/otel/opentelemetry-javaagent.jar
+      - $PWD/jmx-exporter:/app/jmx
     ports:
       - 3000:3000
-    environment: 
+      - 3300:3300
+    environment:
+      MB_LOAD_ANALYTICS_CONTENT: false
+      MB_LOAD_SAMPLE_CONTENT: false
       MB_DB_TYPE: postgres
-      MB_DB_HOST: postgres-app-db-load
+      MB_DB_HOST: app-db-load
       MB_DB_PORT: 5432
       MB_DB_DBNAME: metabase
       MB_DB_USER: metabase
@@ -45,19 +52,38 @@ services:
       MB_APPLICATION_DB_MAX_CONNECTION_POOL_SIZE: 500 # This number is super high in order to make the App DB not throttle Metabase
       MB_SEND_EMAIL_ON_FIRST_LOGIN_FROM_NEW_DEVICE: FALSE
       MB_DISABLE_SESSION_THROTTLE: true
-      JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true -Xms1500m -Xmx3500m -Dlog4j.configurationFile=file:/metabase.db/log4j2.xml
+      MB_PROMETHEUS_SERVER_PORT: 3300
+      # took out -javaagent:/app/pyroscope/pyroscope.jar -javaagent:/app/otel/opentelemetry-javaagent.jar 
+      JAVA_TOOL_OPTIONS: -Dnetworkaddress.cache.ttl=0 -Djava.net.preferIPv4Stack=true -Xmx3276m -Dlog4j.configurationFile=file:/metabase.db/log4j2.xml -javaagent:/app/jmx/jmx_prometheus_javaagent-1.1.0.jar=3301:/app/jmx/config.yml
+      # PYROSCOPE_SERVER_ADDRESS: http://pyroscope:4040
+      # PYROSCOPE_APPLICATION_NAME: metabase
+      # PYROSCOPE_PROFILER_ALLOC: 524288
+      # PYROSCOPE_PROFILER_LOCK: 10000
+      # PYROSCOPE_FORMAT: jfr
+      # OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+      # OTEL_EXPORTER_OTLP_INSECURE: true
+      # OTEL_TRACES_EXPORTER: otlp
+      # OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4318
+      # OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      # OTEL_SERVICE_NAME: metabase
+      # OTEL_METRICS_EXPORTER: none
+      # OTEL_EXPORTER_PROMETHEUS_PORT: 9090
+      # OTEL_EXPORTER_PROMETHEUS_HOST: prometheus
+      # OTEL_INSTRUMENTATION_quartz_ENABLED: false
+      MB_COLORIZE_LOGS: false
+      MB_EMOJI_IN_LOGS: false
     deploy:
       resources:
         limits:
-          cpus: '2'
+          cpus: '4'
           memory: 4096M
         reservations:
-          cpus: '2'
-          memory: 2048M
+          cpus: '4'
+          memory: 4096M
     networks: 
-      - metanet1-load
+      - metanet-load-testing
     depends_on: 
-      postgres-app-db-load:
+      app-db-load:
         condition: service_healthy
       postgres-data1-load:
         condition: service_healthy
@@ -66,45 +92,123 @@ services:
       interval: 15s
       timeout: 5s
       retries: 10
-  postgres-app-db-load:
-    image: postgres:16.2-alpine
-    container_name: postgres-app-db-load
-    hostname: postgres-app-db-load
+  haproxy-balancer-ssh-load:
+    image: haproxy:3.1.5-alpine
+    hostname: haproxy-ssh-load
+    container_name: haproxy-ssh-load
+    volumes: 
+      - $PWD/haproxy/:/usr/local/etc/haproxy/:ro
+    networks:
+      - metanet-load-testing
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 64M
+        reservations:
+          cpus: '0.5'
+          memory: 32M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -O /dev/null http://localhost || exit 1"]
+      timeout: 10s
+  openssh-server1:
+    image: lscr.io/linuxserver/openssh-server:version-8.8_p1-r1
+    container_name: ssh-load1
+    hostname: ssh-load1
+    environment:
+      - PUBLIC_KEY_FILE=/root/.ssh/id_ed25519.pub
+      - USER_NAME=metabase
+    volumes:
+      - $PWD/ssh/sshd_config:/config/ssh_host_keys/sshd_config
+      - $PWD/ssh/keys/:/root/.ssh/
+    networks: 
+      - metanet-load-testing
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 50M
+        reservations:
+          cpus: '0.05'
+          memory: 10M
+  openssh-server2:
+    image: lscr.io/linuxserver/openssh-server:version-8.8_p1-r1
+    container_name: ssh-load2
+    hostname: ssh-load2
+    environment:
+      - PUBLIC_KEY_FILE=/root/.ssh/id_ed25519.pub
+      - USER_NAME=metabase
+    volumes:
+      - $PWD/ssh/sshd_config:/config/ssh_host_keys/sshd_config
+      - $PWD/ssh/keys/:/root/.ssh/
+    networks: 
+      - metanet-load-testing
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 50M
+        reservations:
+          cpus: '0.05'
+          memory: 10M
+  app-db-load:
+    image: postgres:17-alpine
+    container_name: app-db-load
+    hostname: app-db-load
     environment:
       - "POSTGRES_USER=metabase"
       - "POSTGRES_DB=metabase"
       - "POSTGRES_PASSWORD=mysecretpassword"
-    ports:
-      - 5432:5432
-    volumes:
-      - $PWD/postgres_origin:/var/lib/postgresql/data
+    # volumes:
+    #   - $PWD/postgres_origin:/var/lib/postgresql/data
     networks:
-      - metanet1-load
+      - metanet-load-testing
     deploy:
       resources:
         limits:
           cpus: '2'
-          memory: 4096M
+          memory: 8192M
         reservations:
-          cpus: '1'
-          memory: 2048M
+          cpus: '2'
+          memory: 8192M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U metabase -d metabase"]
       interval: 10s
       timeout: 5s
       retries: 5
     command: -c 'max_connections=10000'
-  setup-load:
-    build: setup/.
-    container_name: setup-load
-    volumes:
-      - $PWD/setup/setup.py:/app/setup.py
-    networks:
-      - metanet1-load
+  app-db-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    container_name: app-db-exporter-load
+    hostname: app-db-exporter-load
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 128M
+        reservations:
+          cpus: '1'
+          memory: 128M
+    environment:
+      - DATA_SOURCE_NAME=postgresql://metabase:mysecretpassword@app-db-load:5432/metabase?sslmode=disable
+      - PG_EXPORTER_DISABLE_SETTINGS_METRICS=true
+      - PG_EXPORTER_DISABLE_DEFAULT_METRICS=true
     depends_on:
-      metabase-load:
+      app-db-load:
         condition: service_healthy
-    command: python /app/setup.py
+    networks: 
+      - metanet-load-testing
+  setup-load-test:
+    image: python:3-alpine
+    container_name: setup-load-test
+    volumes:
+      - ./setup/:/app/
+    networks:
+      - metanet-load-testing
+    depends_on:
+      metabase-load-test:
+        condition: service_healthy
+    command: sh -c "pip install --disable-pip-version-check -r /app/requirements.txt && python /app/setup.py"
     deploy:
       resources:
         limits:
@@ -114,15 +218,18 @@ services:
           cpus: '0.5'
           memory: 32M
     environment:
-      host: http://metabase
+      host: http://metabase-load-test
       port: 3000
-      dbs: 1
+      # Change this to your own database connection string
+      connection_string: "postgres://metabase:metasample123@postgres-data1-load:5432/sample"
+      table: Orders
+      tunnel: false
   postgres-data1-load:
     image:  metabase/qa-databases:postgres-sample-15
     container_name: postgres-data1-load
     hostname: postgres-data1-load
     networks: 
-      - metanet1-load
+      - metanet-load-testing
     deploy:
       resources:
         limits:
@@ -138,19 +245,21 @@ services:
       retries: 5
     command: -c 'max_connections=10000'
   k6-load:
-    image: grafana/k6:0.51.0
+    image: grafana/k6:0.57.0
     volumes:
       - $PWD/k6-script/script.js:/home/k6/script.js
     networks:
-      - metanet1-load
+      - metanet-load-testing
     environment:
-      host: http://metabase:3000
+      host: http://metabase-load-test:3000
       user: a@b.com
       password: metabot1
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM: true
     depends_on:
-      setup-load:
+      setup-load-test:
         condition: service_completed_successfully
-    command: run /home/k6/script.js
+    command: run -o experimental-prometheus-rw /home/k6/script.js
     deploy:
       resources:
         limits:
@@ -159,7 +268,128 @@ services:
         reservations:
           cpus: '1'
           memory: 512M
-
+  # tempo:
+  #   image: grafana/tempo:2.7.0
+  #   hostname: tempo
+  #   container_name: tempo
+  #   networks:
+  #     - metanet-load-testing
+  #   volumes:
+  #     - $PWD/tempo/config.yaml:/etc/config.yaml
+  #   command: [ "-config.file=/etc/config.yaml" ]
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1" ]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2'
+  #         memory: 512M
+  #       reservations:
+  #         cpus: '2'
+  #         memory: 256M
+  #   depends_on:
+  #     grafana:
+  #       condition: service_healthy
+  # pyroscope:
+  #   image: grafana/pyroscope:1.12.0
+  #   hostname: pyroscope
+  #   networks:
+  #     - metanet-load-testing
+  #   volumes:
+  #     - $PWD/pyroscope/config.yaml:/etc/pyroscope/config.yaml
+  #   depends_on:
+  #     grafana:
+  #       condition: service_healthy
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '2'
+  #         memory: 2048M
+  #       reservations:
+  #         cpus: '2'
+  #         memory: 2048M
+  #   healthcheck:
+  #     test: [ "CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4040/ready || exit 1" ]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 10
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus
+    hostname: prometheus
+    networks:
+    - metanet-load-testing
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '2'
+          memory: 512M
+    volumes:
+      - $PWD/prometheus/prometheus.yml:/prometheus/prometheus.yml
+    command: --web.enable-remote-write-receiver --enable-feature=native-histograms
+  grafana:
+    image: grafana/grafana-oss:11.4.0
+    container_name: grafana
+    hostname: grafana
+    ports:
+      - 3030:3000
+    networks: 
+      - metanet-load-testing
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '1'
+          memory: 256M
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: true
+      GF_FEATURE_TOGGLES_ENABLE: traceqlEditor traceQLStreaming metricsSummary
+      GF_RENDERING_SERVER_URL: http://grafana-renderer:8081/render
+      GF_RENDERING_CALLBACK_URL: http://localhost:3030/
+      GF_LOG_FILTERS: rendering:debug
+    volumes:
+      - $PWD/grafana/datasources/:/etc/grafana/provisioning/datasources/
+      - $PWD/grafana/dashboards/:/etc/grafana/provisioning/dashboards/
+      - $PWD/grafana/defaults.ini:/etc/grafana/grafana.ini
+    healthcheck:
+      test: curl --fail -X GET -I http://localhost:3000/api/health || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 3
+  loki:
+    image: grafana/loki:3.3.2
+    hostname: loki
+    container_name: loki
+    networks:
+      - metanet-load-testing
+    ports:
+      - 3100:3100
+    healthcheck:
+      test: wget --quiet --tries=1 --output-document=- http://localhost:3100/ready | grep -q -w ready || exit 1
+      start_period: 20s
+      interval: 10s
+      timeout: 1s
+      retries: 12
+    volumes:
+      - $PWD/loki/local-config.yaml:/etc/loki/local-config.yaml:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 512M
+        reservations:
+          cpus: '2'
+          memory: 512M
 networks: 
-  metanet1-load:
+  metanet-load-testing:
     driver: bridge

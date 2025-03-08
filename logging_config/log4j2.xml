@@ -1,14 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Configuration>
   <Appenders>
+    <!-- <File name="File" fileName="/metabase.db/metabase.log">
+      <PatternLayout pattern="%date %level %logger{2} :: %message%n%throwable">
+        <replace regex=":basic-auth \\[.*\\]" replacement=":basic-auth [redacted]"/>
+      </PatternLayout>
+    </File> -->
     <Http name="Http" url="http://api_bun:3000/logs">
-      <JsonLayout properties="true"/>
-      <!-- <JsonTemplateLayout eventTemplateUri="file:///metabase.db/layout.json"/> -->
+      <JsonTemplateLayout eventTemplateUri="file:///metabase.db/layout.json"/>
     </Http>
+    <!-- <RollingFile name="RollingFile" fileName="/app/metabase.log" filePattern="/app/metabase.log.%i">
+      <Policies>
+        <SizeBasedTriggeringPolicy size="500 MB"/>
+      </Policies>
+      <DefaultRolloverStrategy max="2"/>
+      <PatternLayout pattern="%date %level %logger{2} :: %message%n%throwable">
+        <replace regex=":basic-auth \\[.*\\]" replacement=":basic-auth [redacted]"/>
+      </PatternLayout>
+    </RollingFile> -->
     <Console name="STDOUT" target="SYSTEM_OUT" follow="true">
       <PatternLayout pattern="%date %level %logger{2} :: %message%n%throwable">
         <replace regex=":basic-auth \\[.*\\]" replacement=":basic-auth [redacted]"/>
       </PatternLayout>
+      <!-- <JsonTemplateLayout eventTemplateUri="file:///metabase.db/layout.json"/> -->
     </Console>
   </Appenders>
   <Loggers>
@@ -17,14 +31,16 @@
     <Logger name="metabase.plugins" level="INFO"/>
     <Logger name="metabase.server.middleware" level="DEBUG"/>
     <Logger name="metabase.query-processor" level="INFO"/>
-    <Logger name="metabase.driver.sql-jdbc.sync" level="INFO"/>
-    <Logger name="metabase.sync" level="INFO"/>
-    <Logger name="metabase.task.sync-databases" level="INFO"/>
+    <Logger name="metabase.driver.sql-jdbc.sync" level="DEBUG"/>
+    <Logger name="metabase.sync" level="DEBUG"/>
+    <Logger name="metabase.task.sync-databases" level="DEBUG"/>
+    <Logger name="sync" level="ALL"/>
     <Logger name="com.mchange" level="ERROR"/>
     <Logger name="org.quartz" level="INFO"/>
     <Logger name="liquibase" level="ERROR"/>
     
     <Root level="WARN">
+      <!-- <AppenderRef ref="File"/> -->
       <AppenderRef ref="Http"/>
       <AppenderRef ref="STDOUT"/>
     </Root>

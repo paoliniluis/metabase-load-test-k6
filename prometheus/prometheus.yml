@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s 
+
+scrape_configs:
+  - job_name: 'metabase'
+    static_configs:
+      - targets: ['metabase-load-test:3300']
+  
+  - job_name: 'jmx'
+    static_configs:
+      - targets: ['metabase-load-test:3301']
+  
+  - job_name: 'postgres-app-db-exporter'
+    static_configs:
+      - targets: ['app-db-exporter-load:9187']

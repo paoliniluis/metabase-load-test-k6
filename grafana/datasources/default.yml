@@ -1,0 +1,45 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+  - name: Pyroscope
+    type: grafana-pyroscope-datasource
+    access: proxy
+    uid: pyroscope
+    url: http://pyroscope:4040
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+  - name: Tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    basicAuth: false
+    isDefault: false
+    version: 1
+    uid: tempo
+    jsonData:
+      httpMethod: GET
+      serviceMap:
+        datasourceUid: prometheus 
+      lokiSearch:
+        datasourceUid: loki
+      nodeGraph:
+        enabled: true
+      tracesToLogsV2:
+        datasourceUid: loki
+  - name: metrics
+    access: proxy
+    type: grafana-postgresql-datasource
+    uid: metrics
+    url: postgres-app-db-load:5432
+    user: metabase
+    isDefault: true
+    jsonData: {"maxOpenConns":100,"maxIdleConns":100,"maxIdleConnsAuto":true,"connMaxLifetime":14400,"database":"metabase","sslmode":"disable","postgresVersion":1600}
+    secureJsonData: {"password":"mysecretpassword"}
